@@ -1,0 +1,71 @@
+###############################
+#
+#       UCB-JUDGE - v1.0
+#
+###############################
+
+version: "3.7"
+
+networks:
+  elk:
+    driver: bridge
+
+services:
+  elasticsearch:
+    container_name: uj-elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    restart: always
+    ports:
+      - "9200:9200"
+    environment:
+      cluster.name: ${CLUSTER_NAME}
+      discovery.type: single-node
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+      bootstrap.memory_lock: "true"
+      xpack.security.enabled: "true"
+      xpack.license.self_generated.type: ${LICENSE}
+      xpack.security.authc.api_key.enabled: "true"
+    volumes:
+      - ~/Desktop/SIS-311/ucb-judge/elasticsearch:/usr/share/elasticsearch/data
+    networks:
+      - elk
+
+  logstash:
+    container_name: uj-logstash
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    restart: always
+    ports:
+      - "5044:5044"
+      - "5000:5000/tcp"
+      - "5000:5000/udp"
+      - "9600:9600"
+    environment:
+      xpack.monitoring.enabled: "false"
+    volumes:
+      - ~/Desktop/SIS-311/ucb-judge/logstash:/usr/share/logstash/data
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+    depends_on:
+      - elasticsearch
+    networks:
+      - elk
+
+  kibana:
+    container_name: library_kibana
+    image: docker.elastic.co/kibana/kibana:${STACK_VERSION}
+    restart: always
+    ports:
+      - "5601:5601"
+    environment:
+      - SERVERNAME=kibana
+      - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_HOSTS}
+      - ELASTICSEARCH_USERNAME=${KIBANA_USERNAME}
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
+      - XPACK_SECURITY_ENCRYPTIONKEY=${ENCRYPTION_KEY}
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=${ENCRYPTION_KEY}
+      - XPACK_REPORTING_ENCRYPTIONKEY=${ENCRYPTION_KEY}
+    depends_on:
+      - elasticsearch
+    volumes:
+      - ~/Desktop/SIS-311/ucb-judge/kibana:/usr/share/kibana/data
+    networks:
+      - elk
