@@ -13,7 +13,7 @@ networks:
 
 services:
   setup:
-    container_name: uj-elk-setup
+    container_name: uj-setup
     image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
     user: "0"
     environment:
@@ -27,31 +27,31 @@ services:
       test: ["CMD-SHELL", "[ -f config/certs/elasticsearch/elasticsearch.crt ]"]
       interval: 1s
       timeout: 5s
-      retries: 100
+      retries: 120
     networks:
       - elknet
 
   elasticsearch:
     container_name: uj-elasticsearch
     image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    restart: always
     ports:
       - "9200:9200"
-      - "9300:9300"
     environment:
       node.name: elasticsearch
       cluster.name: ${CLUSTER_NAME}
       discovery.type: single-node
       ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
-      bootstrap.memory_lock: true
-      xpack.security.enabled: true
-      xpack.security.http.ssl.enabled: true
-      xpack.security.http.ssl.key: certs/elasticsearch/elasticsearch.key
-      xpack.security.http.ssl.certificate: certs/elasticsearch/elasticsearch.crt
-      xpack.security.http.ssl.certificate_authorities: certs/ca/ca.crt
-      xpack.security.transport.ssl.enabled: true
-      xpack.security.transport.ssl.key: certs/elasticsearch/elasticsearch.key
-      xpack.security.transport.ssl.certificate: certs/elasticsearch/elasticsearch.crt
-      xpack.security.transport.ssl.certificate_authorities: certs/ca/ca.crt
+      bootstrap.memory_lock: "true"
+      xpack.security.enabled: "true"
+      xpack.security.http.ssl.enabled: "true"
+      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/elasticsearch/elasticsearch.key
+      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/elasticsearch/elasticsearch.crt
+      xpack.security.http.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca/ca.crt
+      xpack.security.transport.ssl.enabled: "true"
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/elasticsearch/elasticsearch.key
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/elasticsearch/elasticsearch.crt
+      xpack.security.transport.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca/ca.crt
       xpack.security.transport.ssl.verification_mode: certificate
       xpack.license.self_generated.type: ${LICENSE}
       xpack.security.authc.api_key.enabled: "true"
@@ -61,12 +61,22 @@ services:
     depends_on:
       setup:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
     networks:
       - elknet
 
   logstash:
     container_name: uj-logstash
     image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    user: root
     restart: always
     ports:
       - "5044:5044"
@@ -80,8 +90,10 @@ services:
       - ~/Desktop/SIS-311/ucb-judge/elk/logstash:/usr/share/logstash/data
       - ./logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
     depends_on:
-      - elasticsearch
-      - kibana
+      elasticsearch:
+        condition: service_healthy
+      kibana:
+        condition: service_healthy
     networks:
       - elknet
 
@@ -100,10 +112,20 @@ services:
       - XPACK_SECURITY_ENCRYPTIONKEY=${ENCRYPTION_KEY}
       - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=${ENCRYPTION_KEY}
       - XPACK_REPORTING_ENCRYPTIONKEY=${ENCRYPTION_KEY}
-    depends_on:
-      - elasticsearch
     volumes:
       - ~/Desktop/SIS-311/ucb-judge/elk/certs:/usr/share/kibana/config/certs
       - ~/Desktop/SIS-311/ucb-judge/elk/kibana:/usr/share/kibana/data
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s -I http://localhost:5601 | grep -q 'HTTP/1.1 302 Found'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
     networks:
       - elknet
